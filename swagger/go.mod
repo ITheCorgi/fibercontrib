@@ -1,6 +1,4 @@
-module github.com/gofiber/contrib/swagger
-
-replace github.com/gofiber/contrib/swagger v1.1.1 => github.com/ITheCorgi/fibercontrib/swagger v0.0.0-20240328193445-586c26783a26
+module github.com/ITheCorgi/fibercontrib/swagger
 
 go 1.18
 
