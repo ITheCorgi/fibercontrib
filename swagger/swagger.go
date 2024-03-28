@@ -12,25 +12,30 @@ import (
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // Config defines the config for middleware.
 type Config struct {
+	// Raw contains a swagger payload (json | yaml)
+	// It is useful in case file embedded.
+	// Optional
+	Raw []byte
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// BasePath for the UI path
-	//
-	// Optional. Default: /
-	BasePath string
-
 	// FilePath for the swagger.json or swagger.yaml file
 	//
 	// Optional. Default: ./swagger.json
 	FilePath string
+
+	// BasePath for the UI path
+	//
+	// Optional. Default: /
+	BasePath string
 
 	// Path combines with BasePath for the full UI path
 	//
@@ -71,7 +76,7 @@ func New(config ...Config) fiber.Handler {
 		if len(cfg.BasePath) == 0 {
 			cfg.BasePath = ConfigDefault.BasePath
 		}
-		if len(cfg.FilePath) == 0 {
+		if len(cfg.FilePath) == 0 && len(cfg.Raw) == 0 {
 			cfg.FilePath = ConfigDefault.FilePath
 		}
 		if len(cfg.Path) == 0 {
@@ -85,16 +90,19 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
-	// Verify Swagger file exists
-	if _, err := os.Stat(cfg.FilePath); os.IsNotExist(err) {
-		panic(fmt.Errorf("%s file does not exist", cfg.FilePath))
-	}
+	var rawSpec = cfg.Raw
+	if len(rawSpec) == 0 {
+		// Verify Swagger file exists
+		_, err := os.Stat(cfg.FilePath)
+		if os.IsNotExist(err) {
+			panic(fmt.Errorf("%s file does not exist", cfg.FilePath))
+		}
 
-	// Read Swagger Spec into memory
-	rawSpec, err := os.ReadFile(cfg.FilePath)
-	if err != nil {
-		log.Fatalf("Failed to read provided Swagger file (%s): %v", cfg.FilePath, err.Error())
-		panic(err)
+		// Read Swagger Spec into memory
+		rawSpec, err = os.ReadFile(cfg.FilePath)
+		if err != nil {
+			log.Fatalf("failed to read provided swagger file (%s): %v", cfg.FilePath, err.Error())
+		}
 	}
 
 	// Validate we have valid JSON or YAML
@@ -104,8 +112,7 @@ func New(config ...Config) fiber.Handler {
 	errYAML := yaml.Unmarshal(rawSpec, &yamlData)
 
 	if errJSON != nil && errYAML != nil {
-		log.Fatalf("Failed to parse the Swagger spec as JSON or YAML: JSON error: %s, YAML error: %s", errJSON, errYAML)
-		panic(fmt.Errorf("Invalid Swagger spec file: %s", cfg.FilePath))
+		log.Fatalf("failed to parse the swagger spec as json or yaml: filepath: %s\n json error: %s, yaml error: %s", cfg.FilePath, errJSON, errYAML)
 	}
 
 	// Generate URL path's for the middleware
@@ -117,9 +124,10 @@ func New(config ...Config) fiber.Handler {
 		if strings.HasSuffix(r.URL.Path, ".yaml") || strings.HasSuffix(r.URL.Path, ".yml") {
 			w.Header().Set("Content-Type", "application/yaml")
 			w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", cfg.CacheAge))
+
 			_, err := w.Write(rawSpec)
 			if err != nil {
-				http.Error(w, "Error processing YAML Swagger Spec", http.StatusInternalServerError)
+				http.Error(w, "error processing YAML Swagger Spec", http.StatusInternalServerError)
 				return
 			}
 		} else if strings.HasSuffix(r.URL.Path, ".json") {
@@ -127,7 +135,7 @@ func New(config ...Config) fiber.Handler {
 			w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", cfg.CacheAge))
 			_, err := w.Write(rawSpec)
 			if err != nil {
-				http.Error(w, "Error processing JSON Swagger Spec", http.StatusInternalServerError)
+				http.Error(w, "error processing JSON Swagger Spec", http.StatusInternalServerError)
 				return
 			}
 		} else {
