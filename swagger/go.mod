@@ -1,5 +1,7 @@
 module github.com/gofiber/contrib/swagger
 
+replace github.com/gofiber/contrib/swagger v1.1.1 => github.com/ITheCorgi/fibercontrib/swagger v1.0.0
+
 go 1.18
 
 require (
